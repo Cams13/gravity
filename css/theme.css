@@ -1,0 +1,37 @@
+#debug_box {
+	z-index: 3;
+	color: white;
+	position:absolute;
+	right:40px;
+	top:10px;
+}
+
+#container {
+	position:relative;
+	width:1024px;
+	height:768px;
+}
+
+#fond {
+	z-index: 1;
+	position:absolute;
+	left:0px;
+	top:0px;
+		
+}
+
+#game {
+	z-index: 2;
+	position:absolute;
+	left:0px;
+	top:0px;
+		
+}
+
+#gui {
+	z-index: 3;
+	position:absolute;
+	left:0px;
+	top:0px;
+		
+}
