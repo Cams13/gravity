@@ -35,3 +35,10 @@ ompiled source #
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Eclipse generated files and dir #
+###################################
+/.settings
+/.metadata
+.project
+
