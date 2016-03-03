@@ -20,6 +20,11 @@ $(document).ready(function() {
 	
 	var ACTIVCORPS = null; //corps en déplacement
 	var CORPSLIST = []; //list de tous les corps
+	var ATTRACTLIST = []; // liste des corps en attente d'attraction avec ACTIVCORPS
+	
+	var G = 6.67 * Math.pow(10,-11); //Constante gravitationnelle, sisi!
+	var DENSITY = 2; //densité des corps (augmenter = plus de gravité)
+	var SURFACEPX = 100; //1px² = SURFACEPX m²
 	
 	/* non utilisé
 	var ANIMSTATE = 0;
@@ -33,30 +38,93 @@ $(document).ready(function() {
  
 	var t1, t2; //temps force calculation
 	
-	//function utilisé pour detecter des collisions	
-	function circleIntersection(x1, y1, r1, x2, y2, r2) {
-	   // distance entre les centre des 2 cercles
-	   var dx = x1 - x2;
-	   var dy = y1 - y2;
-	   var len = Math.sqrt(dx * dx + dy * dy);
-	 
-	   return (len < r1 + r2);
+	
+	function getAngle(x1,y1,x2,y2){
+		var dx;
+	    var dy;
+    	dx = x1 - x2;
+		dy = y1 - y2;
+	    return Math.atan2(dy, dx);
 	}
 	
-	//modify angle de c1 pour converger vers c2 en fonction de la gravité de c2
-	function attract(c1,c2){
+	//function qui calcul la distance en 2 points (2 centres par exemple)
+	function dist(x1,y1,x2,y2){
+		var dx = x1 - x2;
+		var dy = y1 - y2;
+		return Math.sqrt(dx * dx + dy * dy);
+	}
+	
+	//function utilisé pour detecter des collisions	entre 2 cercle
+	function circleIntersection(x1, y1, r1, x2, y2, r2) {
+	   return (dist(x1,y1,x2,y2) < r1 + r2); //est ce que la distance entre les 2 centres est plus petite que la somme des 2 rayon? si oui, collision des cercles.
+	}
+	
+	//function qui retourne vrai si le point (x1,y1) si situe dans le cercle de centre (x2,y2) et de rayon r
+	function inCircle(x1,y1,x2,y2,r){
+		return(dist(x1,y1,x2,y2) < r);
+	}
+	
+	//ajout d'un corp en attente d'attraction
+	function addAttract(c){
+		console.log("add attract");
+		ATTRACTLIST.push(c);
+	}
+	
+	function applyAttract(){
+		var corpSelected = null;
+		var dt = 0.1;
+		if(ATTRACTLIST[0] != undefined && ATTRACTLIST[0] != null && ATTRACTLIST.length > 0){
+			corpSelected = ATTRACTLIST[0];
+			for(var i = 1; i < ATTRACTLIST.length; i++){
+				console.log(i);
+				if(ATTRACTLIST[i].r > corpSelected.r)
+					corpSelected = ATTRACTLIST[i];
+			}
+		}
 		
+		if(corpSelected != null){
+			if(debug)console.log("corps at ("+corpSelected.x+","+corpSelected.y+") execute gravity on corps");
+			//loi universelle de gravitation F = G*(MaMb/d²)
+			var F = (G * corpSelected.m * CORPSLIST[CORPSLIST.length-1].m)/Math.pow(Math.sqrt(SURFACEPX)*dist(corpSelected.x,corpSelected.y,CORPSLIST[CORPSLIST.length-1].x,CORPSLIST[CORPSLIST.length-1].y),2)*1000000;
+			if(debug)console.log("gravity = " + F);
+			if(debug)console.log("angle depart = " + CORPSLIST[CORPSLIST.length-1].angle);
+			var angleF = (Math.PI * (-1)) - getAngle(CORPSLIST[CORPSLIST.length-1].x,CORPSLIST[CORPSLIST.length-1].y,corpSelected.x,corpSelected.y) * (-1); 
+			if(debug)console.log("angleF = " + angleF);
+			var antiF = (Math.PI * (-1)) - angleF;
+			if(debug)console.log("antiF = " + antiF);
+			var omega = CORPSLIST[CORPSLIST.length-1].angle + antiF;
+			if(debug)console.log("omega = " + omega);
+			var newV = Math.sqrt(Math.pow(F,2)+Math.pow(CORPSLIST[CORPSLIST.length-1].v,2)-(2*F*CORPSLIST[CORPSLIST.length-1].v*Math.cos(omega)));
+			if(debug)console.log("newV(G) = " + newV);
+			var theta = Math.asin(((F*Math.sin(omega*(-1)))/newV));
+			theta = theta * (-1);
+			if(debug)console.log("tetha = "+ theta);
+			var alpha = CORPSLIST[CORPSLIST.length-1].angle + theta;
+			if(debug)console.log("alpha = " + alpha);
+			CORPSLIST[CORPSLIST.length-1].angle = alpha;
+			//CORPSLIST[CORPSLIST.length-1].v = Math.round(Math.max(newV,CORPSLIST[CORPSLIST.length-1].v));
+		}
 		
+		//déplacement du corp dans l'angle donnée et à la vitese donnée
+		CORPSLIST[CORPSLIST.length-1].x += Math.round(dt * Math.cos(CORPSLIST[CORPSLIST.length-1].angle) * CORPSLIST[CORPSLIST.length-1].v); 
+		CORPSLIST[CORPSLIST.length-1].y += Math.round(dt * Math.sin(CORPSLIST[CORPSLIST.length-1].angle) * CORPSLIST[CORPSLIST.length-1].v);
+	}
+	
+	//function rest de la liste
+	function resetAttract(){
+		//if(debug)console.log("resetAttract");
+		ATTRACTLIST = [];
 	}
 	
 	//collision entre coprslist[i1] et coprslist[i2] : le plus gros absorbe le plus petit
 	function collide(i1,i2){
-		if(CORPSLIST[i1].r > CORPSLIST[i2]){
+		if(CORPSLIST[i1].r > CORPSLIST[i2].r){
 			CORPSLIST.splice(i2,1);
 		}
 		else {
 			CORPSLIST.splice(i1,1);
 		}
+		resetAttract();
 	}
 	
 	//destroy corp à index i
@@ -88,6 +156,9 @@ $(document).ready(function() {
 		this.img.src = "images/corps"+owner+".png";
 		this.x; //coordonné x de l'img (!= centre du cercle, qui est égal a x - r)
 		this.y = $("#game").get(0).height / 2 ; //idem pour y
+		this.d = DENSITY;
+		this.s = Math.PI * Math.pow(this.r,2) * SURFACEPX;
+		this.m = this.d * this.s;
 		//calcul de x initial suivant le joueur qui tir
 		if(this.owner == 1){
 			this.x = 50 ;
@@ -115,7 +186,7 @@ $(document).ready(function() {
 	//class game
 	function game(p1,p2) {
 		var ga = this;
-		
+
 		//graphic tools
 		this.canvas = $("#game").get(0);
 		this.contexte = this.canvas.getContext('2d');
@@ -199,11 +270,20 @@ $(document).ready(function() {
 		this.stateShoot = function(){
 			//console.log("StateShoot triggered with dt = " + dt);
 
-			//déplacement du corp dans l'angle donnée et à la vitese donnée
-			var dt = 0.1;
-			CORPSLIST[CORPSLIST.length-1].x += (dt * Math.cos(CORPSLIST[CORPSLIST.length-1].angle) * CORPSLIST[CORPSLIST.length-1].v); 
-			CORPSLIST[CORPSLIST.length-1].y += (dt * Math.sin(CORPSLIST[CORPSLIST.length-1].angle) * CORPSLIST[CORPSLIST.length-1].v);
-
+			for(var i = 0;i < CORPSLIST.length-1;i++){
+	    		var x1 = CORPSLIST[CORPSLIST.length-1].x;
+	    		var y1 = CORPSLIST[CORPSLIST.length-1].y;
+	    		var x2 = CORPSLIST[i].x;
+	    		var y2 = CORPSLIST[i].y;
+	    		var rfield2 = CORPSLIST[i].rfield;
+	    		if(inCircle(x1,y1,x2,y2,rfield2)){
+	    			if(debug)console.log("add attract " + i);
+	    			addAttract(CORPSLIST[i]);
+	    		}
+	    	}
+	    	applyAttract(); //deplacement avec gravité
+			resetAttract();
+			
 			//ralentissement + grossisemnt
 			CORPSLIST[CORPSLIST.length-1].v -= 1;
 			CORPSLIST[CORPSLIST.length-1].r += 1;
@@ -224,7 +304,7 @@ $(document).ready(function() {
 		    	}
 		    }
 	    	if(CORPSLIST[CORPSLIST.length-1].y > ga.bheight + 50 ){
-	    		CORPSLIST[CORPSLIST.length-1].angle = - ACTIVCORPS.angle;
+	    		CORPSLIST[CORPSLIST.length-1].angle = - CORPSLIST[CORPSLIST.length-1].angle;
 	    		CORPSLIST[CORPSLIST.length-1].y = ga.bheight + 50;
 	    	}
 	    	else{
@@ -234,22 +314,20 @@ $(document).ready(function() {
 		    	}
 	    	}
 	    	
-	    	for(var i = 0;i <= CORPSLIST.length-2;i++){
-	    		var x1 = CORPSLIST[CORPSLIST.length-1].x - CORPSLIST[CORPSLIST.length-1].r;
-	    		var y1 = CORPSLIST[CORPSLIST.length-1].y - CORPSLIST[CORPSLIST.length-1].r;
+	    	for(var i = 0;i < CORPSLIST.length-1;i++){
+	    		var x1 = CORPSLIST[CORPSLIST.length-1].x;
+	    		var y1 = CORPSLIST[CORPSLIST.length-1].y;
 	    		var rcollide1 = CORPSLIST[CORPSLIST.length-1].rcollide;
 	    		var rfield1 = CORPSLIST[CORPSLIST.length-1].rfield;
-	    		var x2 = CORPSLIST[i].x - CORPSLIST[i].r;
-	    		var y2 = CORPSLIST[i].y - CORPSLIST[i].r;
+	    		var x2 = CORPSLIST[i].x;
+	    		var y2 = CORPSLIST[i].y;
 	    		var rcollide2 = CORPSLIST[i].rcollide;
 	    		var rfield2 = CORPSLIST[i].rfield;
-	    		if(circleIntersection(x1,y1,rcollide1,x2,y2,rfield2)){
-	    			attract(CORPSLIST[CORPSLIST.length-1],CORPSLIST[i]);
-	    		}
 	    		if(circleIntersection(x1,y1,rcollide1,x2,y2,rcollide2)){
 	    			collide(CORPSLIST.length-1,i);
 	    		}
 	    	}
+
 	    	
 	    	/*console.log("moved[x="+CORPSLIST[CORPSLIST.length-1].x
 	    			+",y="+CORPSLIST[CORPSLIST.length-1].y
@@ -471,24 +549,11 @@ $(document).ready(function() {
 			if(g.game != null && g.game.started && SCREEN == 1){
 			    mouseX = parseInt(e.clientX - g.offsetX);
 			    mouseY = parseInt(e.clientY - g.offsetY);
-			    var dx;
-			    var dy;
 			    if(g.game.playerTurn == 1){
-			    	dx = mouseX - g.cx1;
-				    dy = mouseY - g.cy1;
-			    }
-			    else{
-			    	dx = mouseX - g.cx2;
-				    dy = mouseY - g.cy2;
-			    }
-			    var angle = Math.atan2(dy, dx);
-			    g.r = angle;
-			    
-			    if(g.game.playerTurn == 1){
-			    	g.r1 = angle;
+			    	g.r1 = getAngle(mouseX,mouseY,g.cx1,g.cy1);
 			    }
 			    else {
-			    	g.r2 = angle;
+			    	g.r2 = getAngle(mouseX,mouseY,g.cx2,g.cy2);
 			    }
 			    g.draw();
 			}
